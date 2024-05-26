@@ -10,7 +10,7 @@ dataset_path = r'train'
 
 
 # Define the classes
-classes = ['Happy', 'Neutral' , 'Angry']
+classes = ['happy', 'neutral' , 'angry', 'focused']
 
 # Function to load images
 def load_images_from_folder(folder):

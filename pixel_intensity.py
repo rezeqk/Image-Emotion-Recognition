@@ -2,13 +2,13 @@ import os
 import cv2
 import numpy as np
 import matplotlib.pyplot as plt
-import seaborn as sns
+from collections import Counter
 
 # Define the path to the dataset
 dataset_path = r'train'  # Use raw string to avoid escape sequence issues
 
 # Define the classes
-classes = ['Happy', 'Neutral', 'Angry']
+classes = ['Happy', 'Neutral', 'Angry', 'Focused']
 
 # Function to load images
 def load_images_from_folder(folder):
@@ -30,13 +30,18 @@ for cls, imgs in images.items():
     for img in imgs:
         pixel_intensities[cls].extend(img.flatten())
 
-# Plot the pixel intensity distributions
+# Calculate frequency of each pixel intensity
+intensity_counts = {cls: Counter(intensities) for cls, intensities in pixel_intensities.items()}
+
+# Plot the pixel intensity distributions using bar charts
 plt.figure(figsize=(14, 8))
-for cls, intensities in pixel_intensities.items():
-    sns.histplot(intensities, bins=256, kde=True, label=cls, stat='density')
+for cls, counts in intensity_counts.items():
+    keys = list(counts.keys())
+    values = list(counts.values())
+    plt.bar(keys, values, label=cls, alpha=0.7, width=1.0)  # Adjust alpha for better visualization if overlapping
 
 plt.xlabel('Pixel Intensity')
-plt.ylabel('Density')
+plt.ylabel('Frequency')
 plt.title('Aggregated Pixel Intensity Distribution by Class')
 plt.legend()
 plt.show()
