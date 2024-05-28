@@ -1,36 +1,31 @@
-import os
-import cv2
-import numpy as np
-import pandas as pd
+from torchvision import datasets
 import matplotlib.pyplot as plt
 import seaborn as sns
 
-# Define the path to the dataset
-dataset_path = r'train'
 
+def plot_class_distribution(dataset_path, title):
+    # Load the dataset
+    dataset = datasets.ImageFolder(dataset_path)
+    
+    # Calculate class distribution
+    class_counts = {class_name: 0 for class_name in dataset.classes}
+    for _, label in dataset.imgs:
+        class_name = dataset.classes[label]
+        class_counts[class_name] += 1
+    
+    # Data for plotting
+    classes = list(class_counts.keys())
+    counts = list(class_counts.values())
+    
+     # Create a bar chart with seaborn
+    plt.figure(figsize=(10, 6))
+    sns.barplot(x=classes, y=counts, palette='viridis')
+    plt.xlabel('Class')
+    plt.ylabel('Number of Images')
+    plt.title(title)
+    plt.xticks(rotation=45)
+    plt.show()
 
-# Define the classes
-classes = ['happy', 'neutral' , 'angry', 'focused']
-
-# Function to load images
-def load_images_from_folder(folder):
-    images = []
-    for filename in os.listdir(folder):
-        img = cv2.imread(os.path.join(folder, filename), cv2.IMREAD_GRAYSCALE)
-        if img is not None:
-            images.append(img)
-    return images
-
-# Load images into a dictionary
-images = {cls: load_images_from_folder(os.path.join(dataset_path, cls)) for cls in classes}
-
-# Count the number of images per class
-class_counts = {cls: len(imgs) for cls, imgs in images.items()}
-
-# Create a bar chart
-plt.figure(figsize=(10, 6))
-sns.barplot(x=list(class_counts.keys()), y=list(class_counts.values()), palette='viridis')
-plt.xlabel('Class')
-plt.ylabel('Number of Images')
-plt.title('Class Distribution')
-plt.show()
+directories = [r'train', r'test']
+for directory in directories:
+    plot_class_distribution(directory, f'Class Distribution in {directory.capitalize()} Dataset')
