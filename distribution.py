@@ -7,21 +7,20 @@ def plot_class_distribution(dataset_path, title):
     # Load the dataset
     dataset = datasets.ImageFolder(dataset_path)
     
-    # Calculate class distribution
     class_counts = {class_name: 0 for class_name in dataset.classes}
     for _, label in dataset.imgs:
         class_name = dataset.classes[label]
         class_counts[class_name] += 1
     
-    # Data for plotting
     classes = list(class_counts.keys())
     counts = list(class_counts.values())
     
-     # Create a bar chart with seaborn
     plt.figure(figsize=(10, 6))
     sns.barplot(x=classes, y=counts, palette='viridis')
     plt.xlabel('Class')
     plt.ylabel('Number of Images')
+
+
     plt.title(title)
     plt.xticks(rotation=45)
     plt.show()
