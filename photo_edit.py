@@ -58,5 +58,5 @@ def rename_images_in_folder(folder_path):
 
 # Example usage
 source_folder = r'new images'
-target_folder = r'train/happy'
+target_folder = r'train/angry'
 process_and_add_images(source_folder, target_folder)
