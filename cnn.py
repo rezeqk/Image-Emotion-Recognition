@@ -1,15 +1,23 @@
-from matplotlib import pyplot as plt
 import torch
+import torch.nn as nn
+import torch.optim as optim
+import torch.nn.functional as F
 from torchvision import datasets, transforms
 from torch.utils.data import DataLoader, random_split
+from sklearn.metrics import confusion_matrix, classification_report
+import seaborn as sns
+import matplotlib.pyplot as plt
 
 # Define transformations
 transform = transforms.Compose([
-    transforms.Resize((48, 48)),                   # Resize the image to 48x48
-    transforms.Grayscale(),                        # Convert the image to grayscale
-    transforms.ToTensor(),                         # Convert the image to a PyTorch tensor
-    transforms.Normalize((0.5,), (0.5,))           # Normalize the tensor
+    transforms.RandomHorizontalFlip(),
+    transforms.RandomRotation(10),
+    transforms.Resize((48, 48)),
+    transforms.Grayscale(),
+    transforms.ToTensor(),
+    transforms.Normalize((0.5,), (0.5,))
 ])
+
 
 # Load the dataset from the directory
 dataset = datasets.ImageFolder('dataset', transform=transform)
@@ -22,37 +30,44 @@ test_size = len(dataset) - train_size - val_size
 # Perform the split
 train_dataset, val_dataset, test_dataset = random_split(dataset, [train_size, val_size, test_size])
 
+# Check the class distribution in each split
+train_classes = [sample[1] for sample in train_dataset]
+val_classes = [sample[1] for sample in val_dataset]
+test_classes = [sample[1] for sample in test_dataset]
+
+from collections import Counter
+
+print("Train:", Counter(train_classes))
+print("Validation:", Counter(val_classes))
+print("Test:", Counter(test_classes))
+
 # Set up the data loaders
 train_loader = DataLoader(train_dataset, batch_size=64, shuffle=True)
 val_loader = DataLoader(val_dataset, batch_size=64, shuffle=False)
 test_loader = DataLoader(test_dataset, batch_size=64, shuffle=False)
 
-import torch.nn as nn
-import torch.nn.functional as F
-import torch.optim as optim
-
 class FacialStateCNN(nn.Module):
     def __init__(self):
         super(FacialStateCNN, self).__init__()
         self.conv_layer = nn.Sequential(
-            nn.Conv2d(in_channels=1, out_channels=32, kernel_size=3, padding=1),
-            nn.BatchNorm2d(32),
-            nn.LeakyReLU(inplace=True),
-            nn.Conv2d(in_channels=32, out_channels=32, kernel_size=3, padding=1),
-            nn.BatchNorm2d(32),
-            nn.LeakyReLU(inplace=True),
-            nn.MaxPool2d(kernel_size=2, stride=2),
-            nn.Conv2d(in_channels=32, out_channels=64, kernel_size=3, padding=1),
+            nn.Conv2d(in_channels=1, out_channels=64, kernel_size=3, padding=1),
             nn.BatchNorm2d(64),
             nn.LeakyReLU(inplace=True),
             nn.Conv2d(in_channels=64, out_channels=64, kernel_size=3, padding=1),
             nn.BatchNorm2d(64),
             nn.LeakyReLU(inplace=True),
             nn.MaxPool2d(kernel_size=2, stride=2),
+            nn.Conv2d(in_channels=64, out_channels=128, kernel_size=3, padding=1),
+            nn.BatchNorm2d(128),
+            nn.LeakyReLU(inplace=True),
+            nn.Conv2d(in_channels=128, out_channels=128, kernel_size=3, padding=1),
+            nn.BatchNorm2d(128),
+            nn.LeakyReLU(inplace=True),
+            nn.MaxPool2d(kernel_size=2, stride=2),
         )
         self.fc_layer = nn.Sequential(
             nn.Dropout(p=0.1),
-            nn.Linear(12 * 12 * 64, 1000),
+            nn.Linear(12 * 12 * 128, 1000),
             nn.ReLU(inplace=True),
             nn.Linear(1000, 512),
             nn.ReLU(inplace=True),
@@ -78,9 +93,9 @@ scheduler = ReduceLROnPlateau(optimizer, 'min', patience=3, verbose=True)
 best_val_loss = float('inf')
 patience = 5
 trigger_times = 0
-num_epochs = 10
+num_epochs = 20
 
-for epoch in range(num_epochs):  # Train for up to 50 epochs
+for epoch in range(num_epochs):  
     model.train()
     for images, labels in train_loader:
         optimizer.zero_grad()
