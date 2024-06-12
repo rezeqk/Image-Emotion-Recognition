@@ -147,7 +147,7 @@ class Variant2CNN(nn.Module):
         x = self.fc_layer(x)
         return x
 
-# Training function
+# Training function with detailed epoch information
 def train_model(model, train_loader, val_loader, num_epochs=20):
     criterion = nn.CrossEntropyLoss()
     optimizer = optim.Adam(model.parameters(), lr=0.001)
@@ -158,6 +158,10 @@ def train_model(model, train_loader, val_loader, num_epochs=20):
 
     for epoch in range(num_epochs):
         model.train()
+        total_loss = 0
+        total_correct = 0
+        total_samples = 0
+
         for images, labels in train_loader:
             optimizer.zero_grad()
             outputs = model(images)
@@ -165,16 +169,34 @@ def train_model(model, train_loader, val_loader, num_epochs=20):
             loss.backward()
             optimizer.step()
 
+            total_loss += loss.item() * images.size(0)
+            _, predicted = torch.max(outputs.data, 1)
+            total_correct += (predicted == labels).sum().item()
+            total_samples += images.size(0)
+
+        train_loss = total_loss / total_samples
+        train_accuracy = total_correct / total_samples
+
+        # Evaluate on validation set
         model.eval()
         val_loss = 0.0
+        val_correct = 0
+        val_samples = 0
+
         with torch.no_grad():
             for images, labels in val_loader:
                 outputs = model(images)
                 loss = criterion(outputs, labels)
-                val_loss += loss.item()
+                val_loss += loss.item() * images.size(0)
+                _, predicted = torch.max(outputs.data, 1)
+                val_correct += (predicted == labels).sum().item()
+                val_samples += images.size(0)
 
-        val_loss /= len(val_loader)
+        val_loss /= val_samples
+        val_accuracy = val_correct / val_samples
         scheduler.step(val_loss)
+
+        print(f'Epoch {epoch + 1}/{num_epochs}, Train Loss: {train_loss:.4f}, Train Acc: {train_accuracy:.4f}, Val Loss: {val_loss:.4f}, Val Acc: {val_accuracy:.4f}')
 
         if val_loss < best_val_loss:
             best_val_loss = val_loss
