@@ -3,10 +3,17 @@ import torch.nn as nn
 import torch.optim as optim
 from torchvision import datasets, transforms
 from torch.utils.data import DataLoader, random_split
-from sklearn.metrics import confusion_matrix, precision_recall_fscore_support, accuracy_score
+from sklearn.metrics import confusion_matrix, precision_recall_fscore_support, accuracy_score, classification_report
 import seaborn as sns
 import matplotlib.pyplot as plt
 from collections import Counter
+from sklearn.utils.class_weight import compute_class_weight
+import numpy as np
+from torch.optim.lr_scheduler import ExponentialLR
+
+
+# Define the device
+device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
 # Define transformations
 transform = transforms.Compose([
@@ -37,6 +44,11 @@ train_dataset, val_dataset, test_dataset = random_split(dataset, [train_size, va
 train_loader = DataLoader(train_dataset, batch_size=32, shuffle=True)
 val_loader = DataLoader(val_dataset, batch_size=32, shuffle=False)
 test_loader = DataLoader(test_dataset, batch_size=32, shuffle=False)
+
+# Extract classes from train dataset
+train_classes = [label for _, label in train_dataset]
+class_weights = compute_class_weight('balanced', classes=np.unique(train_classes), y=train_classes)
+class_weights_tensor = torch.tensor(class_weights, dtype=torch.float)
 
 class FacialStateCNN(nn.Module):
     def __init__(self):
@@ -149,9 +161,10 @@ class Variant2CNN(nn.Module):
 
 # Training function with detailed epoch information
 def train_model(model, train_loader, val_loader, num_epochs=20):
-    criterion = nn.CrossEntropyLoss()
-    optimizer = optim.Adam(model.parameters(), lr=0.001)
-    scheduler = optim.lr_scheduler.ReduceLROnPlateau(optimizer, 'min', patience=3, verbose=True)
+    criterion = nn.CrossEntropyLoss(weight=class_weights_tensor.to(device))  # ensure tensor is on the same device as model
+    optimizer = optim.Adam(model.parameters(), lr=0.0001)
+    scheduler = ExponentialLR(optimizer, gamma=0.95)  # Setup scheduler
+
     best_val_loss = float('inf')
     patience = 5
     trigger_times = 0
@@ -163,6 +176,7 @@ def train_model(model, train_loader, val_loader, num_epochs=20):
         total_samples = 0
 
         for images, labels in train_loader:
+            images, labels = images.to(device), labels.to(device)  # ensure images and labels are on the correct device
             optimizer.zero_grad()
             outputs = model(images)
             loss = criterion(outputs, labels)
@@ -177,7 +191,6 @@ def train_model(model, train_loader, val_loader, num_epochs=20):
         train_loss = total_loss / total_samples
         train_accuracy = total_correct / total_samples
 
-        # Evaluate on validation set
         model.eval()
         val_loss = 0.0
         val_correct = 0
@@ -185,6 +198,7 @@ def train_model(model, train_loader, val_loader, num_epochs=20):
 
         with torch.no_grad():
             for images, labels in val_loader:
+                images, labels = images.to(device), labels.to(device)
                 outputs = model(images)
                 loss = criterion(outputs, labels)
                 val_loss += loss.item() * images.size(0)
@@ -194,9 +208,11 @@ def train_model(model, train_loader, val_loader, num_epochs=20):
 
         val_loss /= val_samples
         val_accuracy = val_correct / val_samples
+
         scheduler.step(val_loss)
 
         print(f'Epoch {epoch + 1}/{num_epochs}, Train Loss: {train_loss:.4f}, Train Acc: {train_accuracy:.4f}, Val Loss: {val_loss:.4f}, Val Acc: {val_accuracy:.4f}')
+        print(f'Current Learning Rate: {scheduler.get_last_lr()[0]}')
 
         if val_loss < best_val_loss:
             best_val_loss = val_loss
@@ -208,7 +224,7 @@ def train_model(model, train_loader, val_loader, num_epochs=20):
                 print('Early stopping!')
                 break
 
-# Evaluation function
+
 def evaluate_model(model, dataloader):
     model.eval()
     all_preds = []
@@ -218,45 +234,33 @@ def evaluate_model(model, dataloader):
         for images, labels in dataloader:
             outputs = model(images)
             _, preds = torch.max(outputs, 1)
-            all_preds.extend(preds.numpy())
-            all_labels.extend(labels.numpy())
+            all_preds.extend(preds.cpu().numpy())
+            all_labels.extend(labels.cpu().numpy())
 
-    accuracy = accuracy_score(all_labels, all_preds)
-    macro_metrics = precision_recall_fscore_support(all_labels, all_preds, average='macro')
-    micro_metrics = precision_recall_fscore_support(all_labels, all_preds, average='micro')
+    print(classification_report(all_labels, all_preds, target_names=['happy', 'neutral', 'focused', 'angry'], digits=2))
 
-    return confusion_matrix(all_labels, all_preds), {
-        "accuracy": accuracy,
-        "macro_precision": macro_metrics[0],
-        "macro_recall": macro_metrics[1],
-        "macro_f1": macro_metrics[2],
-        "micro_precision": micro_metrics[0],
-        "micro_recall": micro_metrics[1],
-        "micro_f1": micro_metrics[2]
-    }
+    return confusion_matrix(all_labels, all_preds), precision_recall_fscore_support(all_labels, all_preds, average='weighted')
 
-# Train and evaluate each variant
+# Now, integrate this function in your existing code flow:
 results = []
-
 for variant_name, model_class in [("Main Model", FacialStateCNN), 
                                   ("Variant 1", Variant1CNN), 
                                   ("Variant 2", Variant2CNN)]:
     model = model_class()
     train_model(model, train_loader, val_loader)
     model.load_state_dict(torch.load('best_model.pth'))
+    print(f'Evaluation results for {variant_name}:')
     conf_matrix, metrics = evaluate_model(model, test_loader)
-    results.append((variant_name, metrics))
     sns.heatmap(conf_matrix, annot=True, fmt="d", cmap="Blues")
     plt.title(f'Confusion Matrix for {variant_name}')
     plt.xlabel('Predicted')
     plt.ylabel('True')
     plt.show()
-    print(f'{variant_name} Classification Report:')
-    print(metrics)
 
-# Print the results in the required table format
-print("Model\tMacro Precision\tMacro Recall\tMacro F1\tMicro Precision\tMicro Recall\tMicro F1\tAccuracy")
+    results.append((variant_name, metrics))
+
+# to print a summart table at the end
+print("Model\tAccuracy\tPrecision\tRecall\tF1-Score")
 for result in results:
-    name, metrics = result
-    print(f"{name}\t{metrics['macro_precision']:.4f}\t{metrics['macro_recall']:.4f}\t{metrics['macro_f1']:.4f}\t"
-          f"{metrics['micro_precision']:.4f}\t{metrics['micro_recall']:.4f}\t{metrics['micro_f1']:.4f}\t{metrics['accuracy']:.4f}")
+    name, (accuracy, precision, recall, f1) = result
+    print(f"{name}\t{accuracy:.2f}\t{precision:.2f}\t{recall:.2f}\t{f1:.2f}")
