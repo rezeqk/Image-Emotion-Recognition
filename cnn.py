@@ -42,9 +42,9 @@ print("Validation:", Counter(val_classes))
 print("Test:", Counter(test_classes))
 
 # Set up the data loaders
-train_loader = DataLoader(train_dataset, batch_size=64, shuffle=True)
-val_loader = DataLoader(val_dataset, batch_size=64, shuffle=False)
-test_loader = DataLoader(test_dataset, batch_size=64, shuffle=False)
+train_loader = DataLoader(train_dataset, batch_size=32, shuffle=True)
+val_loader = DataLoader(val_dataset, batch_size=32, shuffle=False)
+test_loader = DataLoader(test_dataset, batch_size=32, shuffle=False)
 
 class FacialStateCNN(nn.Module):
     def __init__(self):
@@ -52,26 +52,32 @@ class FacialStateCNN(nn.Module):
         self.conv_layer = nn.Sequential(
             nn.Conv2d(in_channels=1, out_channels=64, kernel_size=3, padding=1),
             nn.BatchNorm2d(64),
-            nn.LeakyReLU(inplace=True),
+            nn.ReLU(inplace=True),
             nn.Conv2d(in_channels=64, out_channels=64, kernel_size=3, padding=1),
             nn.BatchNorm2d(64),
-            nn.LeakyReLU(inplace=True),
+            nn.ReLU(inplace=True),
             nn.MaxPool2d(kernel_size=2, stride=2),
             nn.Conv2d(in_channels=64, out_channels=128, kernel_size=3, padding=1),
             nn.BatchNorm2d(128),
-            nn.LeakyReLU(inplace=True),
+            nn.ReLU(inplace=True),
             nn.Conv2d(in_channels=128, out_channels=128, kernel_size=3, padding=1),
             nn.BatchNorm2d(128),
-            nn.LeakyReLU(inplace=True),
+            nn.ReLU(inplace=True),
+            nn.MaxPool2d(kernel_size=2, stride=2),
+            nn.Conv2d(in_channels=128, out_channels=256, kernel_size=3, padding=1),
+            nn.BatchNorm2d(256),
+            nn.ReLU(inplace=True),
+            nn.Conv2d(in_channels=256, out_channels=256, kernel_size=3, padding=1),
+            nn.BatchNorm2d(256),
+            nn.ReLU(inplace=True),
             nn.MaxPool2d(kernel_size=2, stride=2),
         )
         self.fc_layer = nn.Sequential(
-            nn.Dropout(p=0.1),
-            nn.Linear(12 * 12 * 128, 1000),
+            nn.Dropout(p=0.5),
+            nn.Linear(6 * 6 * 256, 1024),
             nn.ReLU(inplace=True),
-            nn.Linear(1000, 512),
+            nn.Linear(1024, 512),
             nn.ReLU(inplace=True),
-            nn.Dropout(p=0.1),
             nn.Linear(512, 4)  # 4 classes: happy, neutral, focused, angry
         )
 
@@ -87,13 +93,13 @@ model = FacialStateCNN()
 from torch.optim.lr_scheduler import ReduceLROnPlateau
 
 criterion = nn.CrossEntropyLoss()
-optimizer = optim.Adam(model.parameters(), lr=0.001)
+optimizer = optim.Adam(model.parameters(), lr=0.0001)
 scheduler = ReduceLROnPlateau(optimizer, 'min', patience=3, verbose=True)
 
 best_val_loss = float('inf')
 patience = 5
 trigger_times = 0
-num_epochs = 20
+num_epochs = 50
 
 for epoch in range(num_epochs):  
     model.train()
