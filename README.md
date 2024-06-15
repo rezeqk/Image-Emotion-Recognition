@@ -32,6 +32,14 @@ sample_pixel_intensity_histograms.py:
 Purpose: This script plots histograms of pixel intensities for a sample of images from each class in the 'train' and 'test' datasets.
 Key Functions:
 plot_sample_pixel_intensity_histograms(loader, num_samples_per_class=15): Plots images and their pixel intensity histograms for each class.
+
+cnn_variants.py:
+Purpose: The purpose of this file is to define and train various Convolutional Neural Network (CNN) models for facial state recognition. It includes data preprocessing, model architecture definitions, and training routines.
+
+Predict.py:
+Purpose: The purpose of this file is to load a trained CNN model and use it to make predictions on new images or datasets.
+
+
 Dependencies: torch, torchvision.datasets, torch.utils.data.DataLoader, matplotlib.pyplot, numpy.
 Steps to Execute the Code
 Data Cleaning
