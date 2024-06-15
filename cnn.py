@@ -7,6 +7,12 @@ from torch.utils.data import DataLoader, random_split
 from sklearn.metrics import confusion_matrix, classification_report
 import seaborn as sns
 import matplotlib.pyplot as plt
+from collections import Counter
+from torch.optim.lr_scheduler import ReduceLROnPlateau
+from sklearn.metrics import confusion_matrix, classification_report
+import seaborn as sns
+
+
 
 # Define transformations
 transform = transforms.Compose([
@@ -35,7 +41,7 @@ train_classes = [sample[1] for sample in train_dataset]
 val_classes = [sample[1] for sample in val_dataset]
 test_classes = [sample[1] for sample in test_dataset]
 
-from collections import Counter
+
 
 print("Train:", Counter(train_classes))
 print("Validation:", Counter(val_classes))
@@ -90,7 +96,7 @@ class FacialStateCNN(nn.Module):
 # Instantiate the model
 model = FacialStateCNN()
 
-from torch.optim.lr_scheduler import ReduceLROnPlateau
+
 
 criterion = nn.CrossEntropyLoss()
 optimizer = optim.Adam(model.parameters(), lr=0.0001)
@@ -133,8 +139,6 @@ for epoch in range(num_epochs):
             print('Early stopping!')
             break
 
-from sklearn.metrics import confusion_matrix, classification_report
-import seaborn as sns
 
 def evaluate_model(model, dataloader):
     model.eval()
