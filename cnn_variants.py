@@ -216,8 +216,8 @@ def evaluate_model(model, dataloader):
             images, labels = images.to(device), labels.to(device)
             outputs = model(images)
             _, preds = torch.max(outputs, 1)
-            all_preds.extend(preds.numpy())
-            all_labels.extend(labels.numpy())
+            all_preds.extend(preds.cpu().numpy())  # Move to CPU before converting to NumPy array
+            all_labels.extend(labels.cpu().numpy())  # Move to CPU before converting to NumPy array
 
     accuracy = accuracy_score(all_labels, all_preds)
     class_metrics = precision_recall_fscore_support(all_labels, all_preds)
@@ -241,6 +241,7 @@ def evaluate_model(model, dataloader):
         "micro_f1": micro_metrics[2],
         "class_report": class_report
     }
+
 
 # Train and evaluate each variant
 results = []
