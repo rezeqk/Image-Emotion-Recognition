@@ -1,6 +1,6 @@
 import torch
 from torchvision import transforms, datasets
-from torch.utils.data import DataLoader  # Corrected from `sata` to `data`
+from torch.utils.data import DataLoader
 from PIL import Image
 import sys
 from cnn_variants import FacialStateCNN, Variant1CNN, Variant2CNN

@@ -2,7 +2,6 @@ from torchvision import datasets
 import matplotlib.pyplot as plt
 import seaborn as sns
 
-
 def plot_class_distribution(dataset_path, title):
     # Load the dataset
     dataset = datasets.ImageFolder(dataset_path)
@@ -19,8 +18,6 @@ def plot_class_distribution(dataset_path, title):
     sns.barplot(x=classes, y=counts, palette='viridis')
     plt.xlabel('Class')
     plt.ylabel('Number of Images')
-
-
     plt.title(title)
     plt.xticks(rotation=45)
     plt.show()

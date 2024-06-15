@@ -11,7 +11,7 @@ import matplotlib.pyplot as plt
 from collections import Counter
 from tabulate import tabulate
 
-# Define transformations
+#preprocess the data
 transform = transforms.Compose([
     transforms.RandomHorizontalFlip(),
     transforms.RandomRotation(10),
@@ -21,10 +21,10 @@ transform = transforms.Compose([
     transforms.Normalize((0.5,), (0.5,))
 ])
 
-# Load the dataset from the directory
+#load dataset from directories
 dataset = datasets.ImageFolder('dataset', transform=transform)
 
-# Set random seed for reproducibility
+#random seed for reproducibility of data
 random_seed = 42
 torch.manual_seed(random_seed)
 
@@ -33,19 +33,19 @@ train_size = int(0.7 * len(dataset))
 val_size = int(0.15 * len(dataset))
 test_size = len(dataset) - train_size - val_size
 
-#split
+#split function to split data
 train_dataset, val_dataset, test_dataset = random_split(dataset, [train_size, val_size, test_size], generator=torch.Generator().manual_seed(random_seed))
 
 #data loaders
 train_loader = DataLoader(train_dataset, batch_size=64, shuffle=True)
 val_loader = DataLoader(val_dataset, batch_size=64, shuffle=False)
 test_loader = DataLoader(test_dataset, batch_size=64, shuffle=False)
-
+#weights for classes (automatically distributed)
 train_classes = [label for _, label in train_dataset]
 class_weights = compute_class_weight('balanced', classes=np.unique(train_classes), y=train_classes)
 class_weights_tensor = torch.tensor(class_weights, dtype=torch.float)
 
-
+#main model with no changes to conv layers and kernel size
 class FacialStateCNN(nn.Module):
     def __init__(self):
         super(FacialStateCNN, self).__init__()
@@ -72,16 +72,16 @@ class FacialStateCNN(nn.Module):
             nn.Linear(1000, 512),
             nn.ReLU(inplace=True),
             nn.Dropout(p=0.1),
-            nn.Linear(512, 4)  # 4 classes: happy, neutral, focused, angry
+            nn.Linear(512, 4)  #4 classes: 0 happy, 1 neutral, 2 focused, 3 angry
         )
 
     def forward(self, x):
         x = self.conv_layer(x)
-        x = x.view(x.size(0), -1)  # Flatten the tensor
+        x = x.view(x.size(0), -1)
         x = self.fc_layer(x)
         return x
     
-
+#variant 1 extra convulotional layers than main model
 class Variant1CNN(nn.Module):
     def __init__(self):
         super(Variant1CNN, self).__init__()
@@ -111,7 +111,7 @@ class Variant1CNN(nn.Module):
             nn.Linear(1000, 512),
             nn.ReLU(inplace=True),
             nn.Dropout(p=0.1),
-            nn.Linear(512, 4)  # 4 classes
+            nn.Linear(512, 4)
         )
 
     def forward(self, x):
@@ -119,7 +119,7 @@ class Variant1CNN(nn.Module):
         x = x.view(x.size(0), -1)
         x = self.fc_layer(x)
         return x
-
+#variant 2 increased kernel size
 class Variant2CNN(nn.Module):
     def __init__(self):
         super(Variant2CNN, self).__init__()
@@ -146,7 +146,7 @@ class Variant2CNN(nn.Module):
             nn.Linear(1000, 512),
             nn.ReLU(inplace=True),
             nn.Dropout(p=0.1),
-            nn.Linear(512, 4)  # 4 classes
+            nn.Linear(512, 4)
         )
 
     def forward(self, x):
@@ -155,17 +155,15 @@ class Variant2CNN(nn.Module):
         x = self.fc_layer(x)
         return x
 
-# Training function
+#training function
 def train_model(model, train_loader, val_loader,  num_epochs=50):
     device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
     model.to(device)
     criterion = nn.CrossEntropyLoss(weight=class_weights_tensor.to(device))
-
     optimizer = optim.Adam(model.parameters(), lr=0.0003)
-
     scheduler = optim.lr_scheduler.ReduceLROnPlateau(optimizer, 'min', patience=3, verbose=True)
     best_val_loss = float('inf')
-    patience = 5
+    patience = 5 #wait 5 epochs if there's no improvement in loss function early stopping
     trigger_times = 0
     val_losses = []
 
@@ -194,7 +192,6 @@ def train_model(model, train_loader, val_loader,  num_epochs=50):
 
         print(f'Epoch {epoch+1}/{num_epochs}, Validation Loss: {val_loss}')
 
-
         if val_loss < best_val_loss:
             best_val_loss = val_loss
             torch.save(model.state_dict(), 'best_model.pth')
@@ -205,7 +202,7 @@ def train_model(model, train_loader, val_loader,  num_epochs=50):
                 print('Early stopping!')
                 break
 
-# Evaluation function
+#evaluation function
 def evaluate_model(model, dataloader):
     device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
     model.to(device)
@@ -218,8 +215,8 @@ def evaluate_model(model, dataloader):
             images, labels = images.to(device), labels.to(device)
             outputs = model(images)
             _, preds = torch.max(outputs, 1)
-            all_preds.extend(preds.cpu().numpy())  # Move to CPU before converting to NumPy array
-            all_labels.extend(labels.cpu().numpy())  # Move to CPU before converting to NumPy array
+            all_preds.extend(preds.cpu().numpy())
+            all_labels.extend(labels.cpu().numpy()) #if using gpu change back to cpu before converting to numpy
 
     accuracy = accuracy_score(all_labels, all_preds)
     class_metrics = precision_recall_fscore_support(all_labels, all_preds)
@@ -245,9 +242,8 @@ def evaluate_model(model, dataloader):
     }
 
 
-# Train and evaluate each variant
 results = []
-
+#loop to train and test the 3 variants
 for variant_name, model_class in [("Main Model", FacialStateCNN), 
                                   ("Variant 1", Variant1CNN), 
                                   ("Variant 2", Variant2CNN)]:
@@ -266,7 +262,7 @@ for variant_name, model_class in [("Main Model", FacialStateCNN),
     print(metrics)
     
 
-# Print the results in the required table format
+#print results
 print("Model\tMacro Precision\tMacro Recall\tMacro F1\tMicro Precision\tMicro Recall\tMicro F1\tAccuracy")
 for result in results:
     name, metrics = result
