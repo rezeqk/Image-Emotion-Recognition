@@ -160,7 +160,7 @@ def train_model(model, train_loader, val_loader,  num_epochs=50):
     device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
     model.to(device)
     criterion = nn.CrossEntropyLoss(weight=class_weights_tensor.to(device))
-    optimizer = optim.Adam(model.parameters(), lr=0.0001)
+    optimizer = optim.Adam(model.parameters(), lr=0.0003)
     scheduler = optim.lr_scheduler.ReduceLROnPlateau(optimizer, 'min', patience=3, verbose=True)
     best_val_loss = float('inf')
     patience = 5
