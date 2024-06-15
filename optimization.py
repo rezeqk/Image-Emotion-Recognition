@@ -11,43 +11,53 @@ import matplotlib.pyplot as plt
 from collections import Counter
 from tabulate import tabulate
 device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
+import numpy as np
+import matplotlib.pyplot as plt
+
 def find_optimal_learning_rate(model_class, train_loader):
     model = model_class().to(device)
     criterion = nn.CrossEntropyLoss(weight=class_weights_tensor.to(device))
     optimizer = optim.Adam(model.parameters(), lr=1e-7)
-    lr_find_epochs = 2
-    lr_increase_factor = 1.05
+    lr_find_epochs = 3  # Increased epochs for more data points
+    lr_increase_factor = np.exp(np.log(10) / 20)  # Using exponential increase
     lrs = []
     losses = []
     best_loss = float('inf')
     best_lr = 1e-7
+    avg_loss = 0
+    beta = 0.98  # Smoothing factor
+    log_lrs = []
 
     model.train()
-    for epoch in range(lr_find_epochs):
-        for images, labels in train_loader:
-            images, labels = images.to(device), labels.to(device)
-            optimizer.zero_grad()
-            outputs = model(images)
-            loss = criterion(outputs, labels)
-            if loss < best_loss:
-                best_loss = loss
-                best_lr = optimizer.param_groups[0]['lr']
-            if loss > 4 * best_loss:
-                break
-            losses.append(loss.item())
-            lrs.append(optimizer.param_groups[0]['lr'])
-            loss.backward()
-            optimizer.step()
-            optimizer.param_groups[0]['lr'] *= lr_increase_factor
+    for batch_num, (images, labels) in enumerate(train_loader, 1):
+        images, labels = images.to(device), labels.to(device)
+        optimizer.zero_grad()
+        outputs = model(images)
+        loss = criterion(outputs, labels)
+        avg_loss = beta * avg_loss + (1-beta) * loss.item()
+        smoothed_loss = avg_loss / (1 - beta**batch_num)
+
+        if batch_num > 1 and smoothed_loss > 4 * best_loss:
+            break
+        if smoothed_loss < best_loss or batch_num == 1:
+            best_loss = smoothed_loss
+            best_lr = optimizer.param_groups[0]['lr']
+
+        lrs.append(optimizer.param_groups[0]['lr'])
+        losses.append(smoothed_loss)
+        loss.backward()
+        optimizer.step()
+        optimizer.param_groups[0]['lr'] *= lr_increase_factor
 
     plt.plot(lrs, losses)
     plt.xscale('log')
     plt.xlabel('Learning Rate')
-    plt.ylabel('Loss')
+    plt.ylabel('Smoothed Loss')
     plt.title('Learning Rate Finder')
     plt.show()
     
     return best_lr
+
 
 
 # Define transformations
