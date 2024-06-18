@@ -6,9 +6,10 @@ import sys
 from cnn_variants import FacialStateCNN, Variant1CNN, Variant2CNN
 
 def load_model(model_class, model_path):
-    device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
-    model = model_class().to(device)
-    model.load_state_dict(torch.load(model_path, map_location=device), strict=False)
+    # device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
+    # model = model_class().to(device)
+    model=model_class()
+    model.load_state_dict(torch.load(model_path), strict=False)
     model.eval()
     return model
 
