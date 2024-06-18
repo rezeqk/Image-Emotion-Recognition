@@ -8,7 +8,7 @@ from cnn_variants import FacialStateCNN, Variant1CNN, Variant2CNN
 def load_model(model_class, model_path):
     device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
     model = model_class().to(device)
-    model.load_state_dict(torch.load(model_path, map_location=device))
+    model.load_state_dict(torch.load(model_path, map_location=device), strict=False)
     model.eval()
     return model
 
@@ -26,8 +26,6 @@ def predict_on_dataset(model, data_loader):
 def predict_on_image(model, image_path):
     device = next(model.parameters()).device
     transform = transforms.Compose([
-        transforms.RandomHorizontalFlip(),
-        transforms.RandomRotation(10),
         transforms.Resize((48, 48)),
         transforms.Grayscale(),
         transforms.ToTensor(),
@@ -44,20 +42,16 @@ def predict_on_image(model, image_path):
 
 if __name__ == "__main__":
     model_path = 'best_model.pth'
-    model_class = FacialStateCNN 
-    #model_class = Variant1CNN
-    #model_class = Variant2CNN
+    model_class = FacialStateCNN  # Default model
 
     if len(sys.argv) > 1 and sys.argv[1] == "image":
-        image_path = sys.argv[2]  
+        image_path = sys.argv[2]
         model = load_model(model_class, model_path)
         prediction = predict_on_image(model, image_path)
         print(f"Predicted class for the image: {prediction}")
     else:
         dataset_path = 'dataset' 
         transform = transforms.Compose([
-            transforms.RandomHorizontalFlip(),
-            transforms.RandomRotation(10),
             transforms.Resize((48, 48)),
             transforms.Grayscale(),
             transforms.ToTensor(),
