@@ -49,6 +49,7 @@ class Variant2CNN(nn.Module):
         return x
 
 
+
 def load_model(model_path):
     model = Variant2CNN()
     model.load_state_dict(torch.load(model_path), strict=False)
