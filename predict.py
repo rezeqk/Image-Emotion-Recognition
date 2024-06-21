@@ -19,9 +19,9 @@ def load_model(model_path):
     checkpoint = torch.load(model_path, map_location=device)
     model_variant = checkpoint['model_variant']
     
-    if model_variant == 'variant1':
+    if model_variant == 'Variant1CNN':
         model = Variant1CNN()
-    elif model_variant == 'variant2':
+    elif model_variant == 'Variant2CNN':
         model = Variant2CNN()
     elif model_variant == 'FacialStateCNN':
         model = FacialStateCNN()
