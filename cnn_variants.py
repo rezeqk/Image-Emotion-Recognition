@@ -140,9 +140,9 @@ def evaluate_model(model, dataloader):
 
 results = []
 # Loop to train and test the 3 variants
-for variant_name, model_class in [("Main Model", FacialStateCNN), 
-                                  ("Variant 1", Variant1CNN), 
-                                  ("Variant 2", Variant2CNN)]:
+for variant_name, model_class in [("FacialStateCNN", FacialStateCNN), 
+                                  ("Variant1CNN", Variant1CNN), 
+                                  ("Variant2CNN", Variant2CNN)]:
     print(f"Training {variant_name}...")
     model = model_class()
     val_losses = train_model(model, train_loader, val_loader, variant_name)
