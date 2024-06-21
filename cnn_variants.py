@@ -1,5 +1,5 @@
 import numpy as np
-from sklearn.utils import compute_class_weight
+from sklearn.utils.class_weight import compute_class_weight
 import torch
 import torch.nn as nn
 import torch.optim as optim
@@ -12,50 +12,50 @@ from collections import Counter
 from tabulate import tabulate
 from cnn_models import FacialStateCNN, Variant1CNN, Variant2CNN
 
-#preprocess the data
+# Preprocess the data
 transform = transforms.Compose([
     transforms.RandomHorizontalFlip(),
     transforms.RandomRotation(10),
     transforms.Resize((48, 48)),
     transforms.Grayscale(),
-    transforms.ToTensor(), 
+    transforms.ToTensor(),
     transforms.Normalize((0.5,), (0.5,))
 ])
 
-#load dataset from directories
+# Load dataset from directories
 dataset = datasets.ImageFolder('dataset', transform=transform)
 
-#random seed for reproducibility of data
+# Random seed for reproducibility of data
 random_seed = 42
 torch.manual_seed(random_seed)
 
-#splitting weights for 70% train, 15% validate, and 15% test 
+# Splitting weights for 70% train, 15% validate, and 15% test
 train_size = int(0.7 * len(dataset))
 val_size = int(0.15 * len(dataset))
 test_size = len(dataset) - train_size - val_size
 
-#split function to split data
+# Split function to split data
 train_dataset, val_dataset, test_dataset = random_split(dataset, [train_size, val_size, test_size], generator=torch.Generator().manual_seed(random_seed))
 
-#data loaders
+# Data loaders
 train_loader = DataLoader(train_dataset, batch_size=64, shuffle=True)
 val_loader = DataLoader(val_dataset, batch_size=64, shuffle=False)
 test_loader = DataLoader(test_dataset, batch_size=64, shuffle=False)
-#weights for classes (automatically distributed)
-train_classes = [label for _, label in train_dataset]
-class_weights = compute_class_weight('balanced', classes=np.unique(train_classes), y=train_classes)
+
+# Calculate class weights for training
+train_labels = [label for _, label in train_dataset]
+class_weights = compute_class_weight('balanced', classes=np.unique(train_labels), y=train_labels)
 class_weights_tensor = torch.tensor(class_weights, dtype=torch.float)
 
-
-#training function
-def train_model(model, train_loader, val_loader,  num_epochs=50):
+# Training function
+def train_model(model, train_loader, val_loader, model_variant, num_epochs=50):
     device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
     model.to(device)
     criterion = nn.CrossEntropyLoss(weight=class_weights_tensor.to(device))
     optimizer = optim.Adam(model.parameters(), lr=0.0003)
     scheduler = optim.lr_scheduler.ReduceLROnPlateau(optimizer, 'min', patience=3, verbose=True)
     best_val_loss = float('inf')
-    patience = 5 #wait 5 epochs if there's no improvement in loss function early stopping
+    patience = 5  # Wait 5 epochs if there's no improvement in loss function early stopping
     trigger_times = 0
     val_losses = []
 
@@ -86,7 +86,10 @@ def train_model(model, train_loader, val_loader,  num_epochs=50):
 
         if val_loss < best_val_loss:
             best_val_loss = val_loss
-            torch.save(model.state_dict(), 'best_model.pth')
+            torch.save({
+                'model_variant': model_variant,
+                'model_state_dict': model.state_dict()
+            }, 'best_model.pth')
             trigger_times = 0
         else:
             trigger_times += 1
@@ -94,7 +97,9 @@ def train_model(model, train_loader, val_loader,  num_epochs=50):
                 print('Early stopping!')
                 break
 
-#evaluation function
+    return val_losses
+
+# Evaluation function
 def evaluate_model(model, dataloader):
     device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
     model.to(device)
@@ -108,7 +113,7 @@ def evaluate_model(model, dataloader):
             outputs = model(images)
             _, preds = torch.max(outputs, 1)
             all_preds.extend(preds.cpu().numpy())
-            all_labels.extend(labels.cpu().numpy()) #if using gpu change back to cpu before converting to numpy
+            all_labels.extend(labels.cpu().numpy())  # If using GPU change back to CPU before converting to numpy
 
     accuracy = accuracy_score(all_labels, all_preds)
     class_metrics = precision_recall_fscore_support(all_labels, all_preds)
@@ -133,16 +138,15 @@ def evaluate_model(model, dataloader):
         "class_report": class_report
     }
 
-
 results = []
-#loop to train and test the 3 variants
-for variant_name, model_class in [("Main Model", FacialStateCNN), 
-                                  ("Variant 1", Variant1CNN), 
-                                  ("Variant 2", Variant2CNN)]:
+# Loop to train and test the 3 variants
+for variant_name, model_class in [("FacialStateCNN", FacialStateCNN), 
+                                  ("Variant1CNN", Variant1CNN), 
+                                  ("Variant2CNN", Variant2CNN)]:
     print(f"Training {variant_name}...")
     model = model_class()
-    val_losses = train_model(model, train_loader, val_loader)
-    model.load_state_dict(torch.load('best_model.pth'))
+    val_losses = train_model(model, train_loader, val_loader, variant_name)
+    model.load_state_dict(torch.load('best_model.pth')['model_state_dict'])
     conf_matrix, metrics = evaluate_model(model, test_loader)
     results.append((variant_name, metrics))
     sns.heatmap(conf_matrix, annot=True, fmt="d", cmap="Blues")
@@ -152,9 +156,8 @@ for variant_name, model_class in [("Main Model", FacialStateCNN),
     plt.show()
     print(f'{variant_name} Classification Report:')
     print(metrics)
-    
 
-#print results
+# Print results
 print("Model\tMacro Precision\tMacro Recall\tMacro F1\tMicro Precision\tMicro Recall\tMicro F1\tAccuracy")
 for result in results:
     name, metrics = result

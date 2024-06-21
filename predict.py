@@ -1,10 +1,9 @@
 import numpy as np
-from sklearn.utils import compute_class_weight
 import torch
 import torch.nn as nn
 import torch.optim as optim
 from torchvision import datasets, transforms
-from torch.utils.data import DataLoader, random_split
+from torch.utils.data import DataLoader
 from sklearn.metrics import confusion_matrix, precision_recall_fscore_support, accuracy_score
 import seaborn as sns
 import matplotlib.pyplot as plt
@@ -12,52 +11,30 @@ from collections import Counter
 from tabulate import tabulate
 import sys
 from PIL import Image
-
-class Variant2CNN(nn.Module):
-    def __init__(self):
-        super(Variant2CNN, self).__init__()
-        self.conv_layer = nn.Sequential(
-            nn.Conv2d(in_channels=1, out_channels=64, kernel_size=5, padding=2),
-            nn.BatchNorm2d(64),
-            nn.LeakyReLU(inplace=True),
-            nn.Conv2d(in_channels=64, out_channels=64, kernel_size=5, padding=2),
-            nn.BatchNorm2d(64),
-            nn.LeakyReLU(inplace=True),
-            nn.MaxPool2d(kernel_size=2, stride=2),
-            nn.Conv2d(in_channels=64, out_channels=128, kernel_size=5, padding=2),
-            nn.BatchNorm2d(128),
-            nn.LeakyReLU(inplace=True),
-            nn.Conv2d(in_channels=128, out_channels=128, kernel_size=5, padding=2),
-            nn.BatchNorm2d(128),
-            nn.LeakyReLU(inplace=True),
-            nn.MaxPool2d(kernel_size=2, stride=2),
-        )
-        self.fc_layer = nn.Sequential(
-            nn.Dropout(p=0.1),
-            nn.Linear(12 * 12 * 128, 1000),
-            nn.ReLU(inplace=True),
-            nn.Linear(1000, 512),
-            nn.ReLU(inplace=True),
-            nn.Dropout(p=0.1),
-            nn.Linear(512, 4)
-        )
-
-    def forward(self, x):
-        x = self.conv_layer(x)
-        x = x.view(x.size(0), -1)
-        x = self.fc_layer(x)
-        return x
-
-
+from cnn_models import Variant1CNN, Variant2CNN, FacialStateCNN
 
 def load_model(model_path):
-    model = Variant2CNN()
-    model.load_state_dict(torch.load(model_path), strict=False)
+    # Check if CUDA is available and set the device accordingly
+    device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
+    checkpoint = torch.load(model_path, map_location=device)
+    model_variant = checkpoint['model_variant']
+    
+    if model_variant == 'Variant1CNN':
+        model = Variant1CNN()
+    elif model_variant == 'Variant2CNN':
+        model = Variant2CNN()
+    elif model_variant == 'FacialStateCNN':
+        model = FacialStateCNN()
+    else:
+        raise ValueError(f"Unknown model variant: {model_variant}")
+    
+    model.load_state_dict(checkpoint['model_state_dict'])
+    model.to(device)
     model.eval()
-    return model
+    return model, device
 
-def predict_on_dataset(model, data_loader):
-    device = next(model.parameters()).device
+def predict_on_dataset(model, data_loader, device):
+    model.to(device)
     predictions = []
     with torch.no_grad():
         for images, _ in data_loader:
@@ -67,8 +44,7 @@ def predict_on_dataset(model, data_loader):
             predictions.extend(predicted.cpu().numpy())
     return predictions
 
-def predict_on_image(model, image_path):
-    device = next(model.parameters()).device
+def predict_on_image(model, image_path, device):
     transform = transforms.Compose([
         transforms.Resize((48, 48)),
         transforms.Grayscale(),
@@ -90,11 +66,11 @@ if __name__ == "__main__":
 
     if len(sys.argv) > 1 and sys.argv[1] == "image":
         image_path = sys.argv[2]
-        model = load_model(model_path)
-        prediction = predict_on_image(model, image_path)
+        model, device = load_model(model_path)
+        prediction = predict_on_image(model, image_path, device)
         print(f"Predicted class for the image: {prediction}")
     else:
-        dataset_path = 'dataset' 
+        dataset_path = 'dataset'
         transform = transforms.Compose([
             transforms.Resize((48, 48)),
             transforms.Grayscale(),
@@ -103,6 +79,6 @@ if __name__ == "__main__":
         ])
         dataset = datasets.ImageFolder(dataset_path, transform=transform)
         data_loader = DataLoader(dataset, batch_size=64, shuffle=False)
-        model = load_model(model_path)
-        predictions = predict_on_dataset(model, data_loader)
+        model, device = load_model(model_path)
+        predictions = predict_on_dataset(model, data_loader, device)
         print("Predictions on dataset:", predictions)
