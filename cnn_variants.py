@@ -22,32 +22,32 @@ transform = transforms.Compose([
     transforms.Normalize((0.5,), (0.5,))
 ])
 
-# Load dataset from directories
+#load dataset from directories
 dataset = datasets.ImageFolder('dataset', transform=transform)
 
-# Random seed for reproducibility of data
+#random seed for reproducibility of data
 random_seed = 42
 torch.manual_seed(random_seed)
 
-# Splitting weights for 70% train, 15% validate, and 15% test
+#splitting weights for 70% train, 15% validate, and 15% test
 train_size = int(0.7 * len(dataset))
 val_size = int(0.15 * len(dataset))
 test_size = len(dataset) - train_size - val_size
 
-# Split function to split data
+#split function to split data
 train_dataset, val_dataset, test_dataset = random_split(dataset, [train_size, val_size, test_size], generator=torch.Generator().manual_seed(random_seed))
 
-# Data loaders
+#data loaders
 train_loader = DataLoader(train_dataset, batch_size=64, shuffle=True)
 val_loader = DataLoader(val_dataset, batch_size=64, shuffle=False)
 test_loader = DataLoader(test_dataset, batch_size=64, shuffle=False)
 
-# Calculate class weights for training
+#calculate class weights for training
 train_labels = [label for _, label in train_dataset]
 class_weights = compute_class_weight('balanced', classes=np.unique(train_labels), y=train_labels)
 class_weights_tensor = torch.tensor(class_weights, dtype=torch.float)
 
-# Training function
+#training function
 def train_model(model, train_loader, val_loader, model_variant, num_epochs=50):
     device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
     model.to(device)
@@ -99,7 +99,7 @@ def train_model(model, train_loader, val_loader, model_variant, num_epochs=50):
 
     return val_losses
 
-# Evaluation function
+#evaluation function
 def evaluate_model(model, dataloader):
     device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
     model.to(device)
@@ -139,7 +139,7 @@ def evaluate_model(model, dataloader):
     }
 
 results = []
-# Loop to train and test the 3 variants
+#loop to train and test the 3 variants
 for variant_name, model_class in [("FacialStateCNN", FacialStateCNN), 
                                   ("Variant1CNN", Variant1CNN), 
                                   ("Variant2CNN", Variant2CNN)]:
@@ -157,7 +157,7 @@ for variant_name, model_class in [("FacialStateCNN", FacialStateCNN),
     print(f'{variant_name} Classification Report:')
     print(metrics)
 
-# Print results
+#print results
 print("Model\tMacro Precision\tMacro Recall\tMacro F1\tMicro Precision\tMicro Recall\tMicro F1\tAccuracy")
 for result in results:
     name, metrics = result
