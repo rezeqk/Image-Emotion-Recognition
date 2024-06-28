@@ -7,8 +7,9 @@ from tabulate import tabulate
 from PIL import Image
 from collections import Counter
 from cnn_models import Variant1CNN, Variant2CNN, FacialStateCNN
+import sys
 
-class_names = ["happy", "neutral", "angry", "focus"]
+class_names = ['Happy', 'Neutral', 'Focused', 'Angry']
 
 def load_model(model_path):
     device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
@@ -62,7 +63,7 @@ def predict_on_image(model, image_path, device):
 
 def get_data_loaders_by_group(dataset, batch_size=64):
     data_loaders = {}
-    classes = ['happy', 'neutral', 'angry', 'focus']
+    classes = ['happy', 'neutral', 'focused', 'angry']
     demographics = ['female', 'male', 'middle_aged', 'senior', 'young']
     
     for class_name in classes:
