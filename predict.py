@@ -3,18 +3,19 @@ import torch
 import torch.nn as nn
 import torch.optim as optim
 from torchvision import datasets, transforms
-from torch.utils.data import DataLoader
+from torch.utils.data import DataLoader, Subset
 from sklearn.metrics import confusion_matrix, precision_recall_fscore_support, accuracy_score
-import seaborn as sns
-import matplotlib.pyplot as plt
-from collections import Counter
 from tabulate import tabulate
 import sys
 from PIL import Image
+from collections import Counter
 from cnn_models import Variant1CNN, Variant2CNN, FacialStateCNN
+import csv
+
+# Define the correct order of class names
+class_names = ["happy", "neutral", "angry", "focus"]
 
 def load_model(model_path):
-    # Check if CUDA is available and set the device accordingly
     device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
     checkpoint = torch.load(model_path, map_location=device)
     model_variant = checkpoint['model_variant']
@@ -35,14 +36,17 @@ def load_model(model_path):
 
 def predict_on_dataset(model, data_loader, device):
     model.to(device)
-    predictions = []
+    all_labels = []
+    all_predictions = []
     with torch.no_grad():
-        for images, _ in data_loader:
+        for images, labels in data_loader:
             images = images.to(device)
+            labels = labels.to(device)
             outputs = model(images)
             _, predicted = torch.max(outputs, 1)
-            predictions.extend(predicted.cpu().numpy())
-    return predictions
+            all_labels.extend(labels.cpu().numpy())
+            all_predictions.extend(predicted.cpu().numpy())
+    return all_labels, all_predictions
 
 def predict_on_image(model, image_path, device):
     transform = transforms.Compose([
@@ -59,10 +63,85 @@ def predict_on_image(model, image_path, device):
         output = model(image)
         prediction = output.argmax(dim=1).item()
     
-    return prediction
+    return class_names[prediction]
+
+def get_data_loaders_by_group(dataset, batch_size=64):
+    data_loaders = {}
+    classes = ['happy', 'neutral', 'angry', 'focus']
+    demographics = ['female', 'male', 'middle_aged', 'senior', 'young']
+    
+    for class_name in classes:
+        for demo_name in demographics:
+            indices = [i for i, (path, _) in enumerate(dataset.samples) if class_name in path and demo_name in path]
+            if indices:
+                subset = Subset(dataset, indices)
+                data_loader = DataLoader(subset, batch_size=batch_size, shuffle=False)
+                data_loaders[(class_name, demo_name)] = data_loader
+    
+    return data_loaders
+
+def calculate_metrics(labels, predictions):
+    accuracy = accuracy_score(labels, predictions)
+    precision, recall, f1, support = precision_recall_fscore_support(labels, predictions, average='macro', zero_division=0)
+    return accuracy, precision, recall, f1, support
+
+def bias_analysis(model, data_loaders, device):
+    results = []
+    
+    for (class_name, demo_name), data_loader in data_loaders.items():
+        labels, predictions = predict_on_dataset(model, data_loader, device)
+        accuracy, precision, recall, f1, support = calculate_metrics(labels, predictions)
+        results.append((class_name, demo_name, accuracy, precision, recall, f1, support))
+    
+    return results
+
+def print_confusion_matrix(labels, predictions, class_name, demo_name):
+    cm = confusion_matrix(labels, predictions, labels=np.arange(len(class_names)))
+    print(f"\nConfusion Matrix for {class_name} - {demo_name}:")
+    print(tabulate(cm, headers=class_names, showindex=class_names, tablefmt="grid"))
+
+def average_metrics_by_gender(results):
+    female_metrics = {'accuracy': [], 'precision': [], 'recall': [], 'f1': [], 'support': []}
+    male_metrics = {'accuracy': [], 'precision': [], 'recall': [], 'f1': [], 'support': []}
+    
+    for result in results:
+        class_name, demo_name, accuracy, precision, recall, f1, support = result
+        if 'female' in demo_name:
+            if accuracy is not None: female_metrics['accuracy'].append(accuracy)
+            if precision is not None: female_metrics['precision'].append(precision)
+            if recall is not None: female_metrics['recall'].append(recall)
+            if f1 is not None: female_metrics['f1'].append(f1)
+            if support is not None: female_metrics['support'].append(support)
+        elif 'male' in demo_name:
+            if accuracy is not None: male_metrics['accuracy'].append(accuracy)
+            if precision is not None: male_metrics['precision'].append(precision)
+            if recall is not None: male_metrics['recall'].append(recall)
+            if f1 is not None: male_metrics['f1'].append(f1)
+            if support is not None: male_metrics['support'].append(support)
+    
+    avg_female_metrics = {k: np.mean([x for x in v if x is not None]) for k, v in female_metrics.items()}
+    avg_male_metrics = {k: np.mean([x for x in v if x is not None]) for k, v in male_metrics.items()}
+    
+    return avg_female_metrics, avg_male_metrics
+
+def analyze_class_distribution(dataset):
+    class_counts = Counter([label for _, label in dataset])
+    print("\nClass distribution in the dataset:")
+    for class_idx, count in class_counts.items():
+        print(f"{class_names[class_idx]}: {count}")
 
 if __name__ == "__main__":
     model_path = 'best_model.pth'
+    dataset_path = 'newdataset'
+
+    transform = transforms.Compose([
+        transforms.Resize((48, 48)),
+        transforms.Grayscale(),
+        transforms.ToTensor(),
+        transforms.Normalize((0.5,), (0.5,))
+    ])
+    
+    dataset = datasets.ImageFolder(dataset_path, transform=transform)
 
     if len(sys.argv) > 1 and sys.argv[1] == "image":
         image_path = sys.argv[2]
@@ -70,15 +149,34 @@ if __name__ == "__main__":
         prediction = predict_on_image(model, image_path, device)
         print(f"Predicted class for the image: {prediction}")
     else:
-        dataset_path = 'dataset'
-        transform = transforms.Compose([
-            transforms.Resize((48, 48)),
-            transforms.Grayscale(),
-            transforms.ToTensor(),
-            transforms.Normalize((0.5,), (0.5,))
-        ])
-        dataset = datasets.ImageFolder(dataset_path, transform=transform)
-        data_loader = DataLoader(dataset, batch_size=64, shuffle=False)
         model, device = load_model(model_path)
-        predictions = predict_on_dataset(model, data_loader, device)
-        print("Predictions on dataset:", predictions)
+        data_loaders = get_data_loaders_by_group(dataset)
+
+        results = []
+        
+        for (class_name, demo_name), data_loader in data_loaders.items():
+            labels, predictions = predict_on_dataset(model, data_loader, device)
+            accuracy, precision, recall, f1, support = calculate_metrics(labels, predictions)
+            results.append((class_name, demo_name, accuracy, precision, recall, f1, support))
+            print_confusion_matrix(labels, predictions, class_name, demo_name)
+        
+        headers = ["Class", "Demographic", "Accuracy", "Precision", "Recall", "F1-Score", "Support"]
+        print(tabulate(results, headers=headers, tablefmt="grid"))
+
+        avg_female_metrics, avg_male_metrics = average_metrics_by_gender(results)
+        
+        print("\nAverage Metrics for Females:")
+        print(tabulate([[avg_female_metrics['accuracy'], avg_female_metrics['precision'], avg_female_metrics['recall'], avg_female_metrics['f1'], avg_female_metrics['support']]], 
+                       headers=["Accuracy", "Precision", "Recall", "F1-Score", "Support"], tablefmt="grid"))
+        
+        print("\nAverage Metrics for Males:")
+        print(tabulate([[avg_male_metrics['accuracy'], avg_male_metrics['precision'], avg_male_metrics['recall'], avg_male_metrics['f1'], avg_male_metrics['support']]], 
+                       headers=["Accuracy", "Precision", "Recall", "F1-Score", "Support"], tablefmt="grid"))
+      
+        # with open('bias_analysis_results.csv', 'w', newline='') as csvfile:
+        #     writer = csv.writer(csvfile)
+        #     writer.writerow(headers)
+        #     writer.writerows(results)
+
+ 
+        analyze_class_distribution(dataset)

@@ -1,10 +1,11 @@
 import numpy as np
 from sklearn.utils.class_weight import compute_class_weight
+from sklearn.model_selection import KFold
 import torch
 import torch.nn as nn
 import torch.optim as optim
 from torchvision import datasets, transforms
-from torch.utils.data import DataLoader, random_split
+from torch.utils.data import DataLoader, Subset, random_split
 from sklearn.metrics import confusion_matrix, precision_recall_fscore_support, accuracy_score
 import seaborn as sns
 import matplotlib.pyplot as plt
@@ -12,7 +13,7 @@ from collections import Counter
 from tabulate import tabulate
 from cnn_models import FacialStateCNN, Variant1CNN, Variant2CNN
 
-# Preprocess the data
+#preprocess the data
 transform = transforms.Compose([
     transforms.RandomHorizontalFlip(),
     transforms.RandomRotation(10),
@@ -29,26 +30,11 @@ dataset = datasets.ImageFolder('dataset', transform=transform)
 random_seed = 42
 torch.manual_seed(random_seed)
 
-#splitting weights for 70% train, 15% validate, and 15% test
-train_size = int(0.7 * len(dataset))
-val_size = int(0.15 * len(dataset))
-test_size = len(dataset) - train_size - val_size
-
-#split function to split data
-train_dataset, val_dataset, test_dataset = random_split(dataset, [train_size, val_size, test_size], generator=torch.Generator().manual_seed(random_seed))
-
-#data loaders
-train_loader = DataLoader(train_dataset, batch_size=64, shuffle=True)
-val_loader = DataLoader(val_dataset, batch_size=64, shuffle=False)
-test_loader = DataLoader(test_dataset, batch_size=64, shuffle=False)
-
-#calculate class weights for training
-train_labels = [label for _, label in train_dataset]
-class_weights = compute_class_weight('balanced', classes=np.unique(train_labels), y=train_labels)
-class_weights_tensor = torch.tensor(class_weights, dtype=torch.float)
+#class names
+class_names = ["happy", "neutral", "angry", "focus"]
 
 #training function
-def train_model(model, train_loader, val_loader, model_variant, num_epochs=50):
+def train_model(model, train_loader, val_loader, model_variant, class_weights_tensor, num_epochs=50):
     device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
     model.to(device)
     criterion = nn.CrossEntropyLoss(weight=class_weights_tensor.to(device))
@@ -57,7 +43,6 @@ def train_model(model, train_loader, val_loader, model_variant, num_epochs=50):
     best_val_loss = float('inf')
     patience = 5  # Wait 5 epochs if there's no improvement in loss function early stopping
     trigger_times = 0
-    val_losses = []
 
     for epoch in range(num_epochs):
         model.train()
@@ -79,17 +64,13 @@ def train_model(model, train_loader, val_loader, model_variant, num_epochs=50):
                 val_loss += loss.item()
 
         val_loss /= len(val_loader)
-        val_losses.append(val_loss)
         scheduler.step(val_loss)
 
         print(f'Epoch {epoch+1}/{num_epochs}, Validation Loss: {val_loss}')
 
         if val_loss < best_val_loss:
             best_val_loss = val_loss
-            torch.save({
-                'model_variant': model_variant,
-                'model_state_dict': model.state_dict()
-            }, 'best_model.pth')
+            best_model_state = model.state_dict()
             trigger_times = 0
         else:
             trigger_times += 1
@@ -97,7 +78,8 @@ def train_model(model, train_loader, val_loader, model_variant, num_epochs=50):
                 print('Early stopping!')
                 break
 
-    return val_losses
+    model.load_state_dict(best_model_state)
+    return model
 
 #evaluation function
 def evaluate_model(model, dataloader):
@@ -113,12 +95,12 @@ def evaluate_model(model, dataloader):
             outputs = model(images)
             _, preds = torch.max(outputs, 1)
             all_preds.extend(preds.cpu().numpy())
-            all_labels.extend(labels.cpu().numpy())  # If using GPU change back to CPU before converting to numpy
+            all_labels.extend(labels.cpu().numpy())
 
     accuracy = accuracy_score(all_labels, all_preds)
-    class_metrics = precision_recall_fscore_support(all_labels, all_preds)
-    macro_metrics = precision_recall_fscore_support(all_labels, all_preds, average='macro')
-    micro_metrics = precision_recall_fscore_support(all_labels, all_preds, average='micro')
+    class_metrics = precision_recall_fscore_support(all_labels, all_preds, zero_division=0)
+    macro_metrics = precision_recall_fscore_support(all_labels, all_preds, average='macro', zero_division=0)
+    micro_metrics = precision_recall_fscore_support(all_labels, all_preds, average='micro', zero_division=0)
 
     class_report = {
         "precision": class_metrics[0],
@@ -138,35 +120,90 @@ def evaluate_model(model, dataloader):
         "class_report": class_report
     }
 
-results = []
-#loop to train and test the 3 variants
-for variant_name, model_class in [("FacialStateCNN", FacialStateCNN), 
-                                  ("Variant1CNN", Variant1CNN), 
-                                  ("Variant2CNN", Variant2CNN)]:
-    print(f"Training {variant_name}...")
-    model = model_class()
-    val_losses = train_model(model, train_loader, val_loader, variant_name)
-    model.load_state_dict(torch.load('best_model.pth')['model_state_dict'])
-    conf_matrix, metrics = evaluate_model(model, test_loader)
-    results.append((variant_name, metrics))
-    sns.heatmap(conf_matrix, annot=True, fmt="d", cmap="Blues")
-    plt.title(f'Confusion Matrix for {variant_name}')
-    plt.xlabel('Predicted')
-    plt.ylabel('True')
-    plt.show()
-    print(f'{variant_name} Classification Report:')
-    print(metrics)
+#kfold function
+def k_fold_cross_validation(model_class, dataset, k=10, num_epochs=50):
+    kf = KFold(n_splits=k, shuffle=True, random_state=random_seed)
+    device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
+    all_fold_metrics = []
+    all_class_reports = []
 
-#print results
-print("Model\tMacro Precision\tMacro Recall\tMacro F1\tMicro Precision\tMicro Recall\tMicro F1\tAccuracy")
-for result in results:
-    name, metrics = result
-    print(f"{name}\t{metrics['macro_precision']:.4f}\t{metrics['macro_recall']:.4f}\t{metrics['macro_f1']:.4f}\t"
-          f"{metrics['micro_precision']:.4f}\t{metrics['micro_recall']:.4f}\t{metrics['micro_f1']:.4f}\t{metrics['accuracy']:.4f}")
-    print(f"{name} per class:")
-    class_report = metrics["class_report"]
-    table = []
-    for i, (prec, rec, f1, support) in enumerate(zip(class_report["precision"], class_report["recall"], class_report["f1"], class_report["support"])):
-        table.append([i, prec, rec, f1, support])
-    headers = ["Class", "Precision", "Recall", "F1", "Support"]
-    print(tabulate(table, headers=headers, tablefmt="grid"))
+    for fold, (train_idx, test_idx) in enumerate(kf.split(dataset)):
+        print(f"Starting fold {fold + 1}/{k}")
+
+        train_val_idx = train_idx[:int(0.85 * len(train_idx))]
+        val_idx = train_idx[int(0.85 * len(train_idx)):]
+
+        train_subset = Subset(dataset, train_val_idx)
+        val_subset = Subset(dataset, val_idx)
+        test_subset = Subset(dataset, test_idx)
+
+        train_loader = DataLoader(train_subset, batch_size=64, shuffle=True)
+        val_loader = DataLoader(val_subset, batch_size=64, shuffle=False)
+        test_loader = DataLoader(test_subset, batch_size=64, shuffle=False)
+
+        #calculate class weights for training
+        train_labels = [label for _, label in train_subset]
+        class_weights = compute_class_weight('balanced', classes=np.unique(train_labels), y=train_labels)
+        class_weights_tensor = torch.tensor(class_weights, dtype=torch.float)
+
+        model = model_class().to(device)
+        model = train_model(model, train_loader, val_loader, model_class.__name__, class_weights_tensor, num_epochs)
+        conf_matrix, metrics = evaluate_model(model, test_loader)
+        all_fold_metrics.append(metrics)
+        all_class_reports.append(metrics['class_report'])
+
+        #plot confusion matrix
+        sns.heatmap(conf_matrix, annot=True, fmt="d", cmap="Blues", xticklabels=class_names, yticklabels=class_names)
+        plt.title(f'Confusion Matrix for {model_class.__name__} - Fold {fold+1}')
+        plt.xlabel('Predicted')
+        plt.ylabel('True')
+        plt.show()
+
+        print(f"Fold {fold + 1}/{k} metrics: {metrics}")
+
+    #compute average metrics across all folds
+    avg_metrics = {
+        "accuracy": np.mean([metrics["accuracy"] for metrics in all_fold_metrics]),
+        "macro_precision": np.mean([metrics["macro_precision"] for metrics in all_fold_metrics]),
+        "macro_recall": np.mean([metrics["macro_recall"] for metrics in all_fold_metrics]),
+        "macro_f1": np.mean([metrics["macro_f1"] for metrics in all_fold_metrics]),
+        "micro_precision": np.mean([metrics["micro_precision"] for metrics in all_fold_metrics]),
+        "micro_recall": np.mean([metrics["micro_recall"] for metrics in all_fold_metrics]),
+        "micro_f1": np.mean([metrics["micro_f1"] for metrics in all_fold_metrics]),
+    }
+
+    avg_class_report = {
+        "precision": np.mean([cr["precision"] for cr in all_class_reports], axis=0),
+        "recall": np.mean([cr["recall"] for cr in all_class_reports], axis=0),
+        "f1": np.mean([cr["f1"] for cr in all_class_reports], axis=0),
+        "support": np.sum([cr["support"] for cr in all_class_reports], axis=0)
+    }
+
+    avg_metrics["class_report"] = avg_class_report
+
+    return avg_metrics, all_fold_metrics
+
+if __name__ == "__main__":
+    results = []
+    # Loop to train and test the 3 variants with k-fold cross-validation
+    for variant_name, model_class in [("FacialStateCNN", FacialStateCNN),
+                                      ("Variant1CNN", Variant1CNN),
+                                      ("Variant2CNN", Variant2CNN)]:
+        print(f"Performing k-fold cross-validation for {variant_name}...")
+        avg_metrics, all_fold_metrics = k_fold_cross_validation(model_class, dataset, k=10, num_epochs=50)
+        results.append((variant_name, avg_metrics, all_fold_metrics))
+        print(f"Avg metrics for {variant_name}: {avg_metrics}")
+
+    # Print and compare results
+    print("Model\tMacro Precision\tMacro Recall\tMacro F1\tMicro Precision\tMicro Recall\tMicro F1\tAccuracy")
+    for result in results:
+        name, avg_metrics, _ = result
+        print(f"{name}\t{avg_metrics['macro_precision']:.4f}\t{avg_metrics['macro_recall']:.4f}\t{avg_metrics['macro_f1']:.4f}\t"
+              f"{avg_metrics['micro_precision']:.4f}\t{avg_metrics['micro_recall']:.4f}\t{avg_metrics['micro_f1']:.4f}\t{avg_metrics['accuracy']:.4f}")
+        print(f"{name} per class:")
+        class_report = avg_metrics["class_report"]
+        table = []
+        for i, (prec, rec, f1, support) in enumerate(zip(class_report["precision"], class_report["recall"], class_report["f1"], class_report["support"])):
+            table.append([class_names[i], prec, rec, f1, support])
+        headers = ["Class", "Precision", "Recall", "F1", "Support"]
+        print(tabulate(table, headers=headers, tablefmt="grid"))
