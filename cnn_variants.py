@@ -12,6 +12,7 @@ import matplotlib.pyplot as plt
 from collections import Counter
 from tabulate import tabulate
 from cnn_models import FacialStateCNN, Variant1CNN, Variant2CNN
+import os
 
 #preprocess the data
 transform = transforms.Compose([
@@ -24,16 +25,16 @@ transform = transforms.Compose([
 ])
 
 #load dataset from directories
-dataset = datasets.ImageFolder('newdataset_3', transform=transform)
+dataset = datasets.ImageFolder('newdataset', transform=transform)
 
 #random seed for reproducibility of data
 random_seed = 42
 torch.manual_seed(random_seed)
 
 #class names
-class_names = ["happy", "neutral", "angry", "focus"]
+class_names = ['Happy', 'Neutral', 'Focused', 'Angry']
 
-#training function
+
 def train_model(model, train_loader, val_loader, model_variant, class_weights_tensor, num_epochs=50):
     device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
     model.to(device)
@@ -41,8 +42,10 @@ def train_model(model, train_loader, val_loader, model_variant, class_weights_te
     optimizer = optim.Adam(model.parameters(), lr=0.0003)
     scheduler = optim.lr_scheduler.ReduceLROnPlateau(optimizer, 'min', patience=3, verbose=True)
     best_val_loss = float('inf')
-    patience = 5  # Wait 5 epochs if there's no improvement in loss function early stopping
+    patience = 5
     trigger_times = 0
+
+    save_path = 'best_model.pth'
 
     for epoch in range(num_epochs):
         model.train()
@@ -71,6 +74,13 @@ def train_model(model, train_loader, val_loader, model_variant, class_weights_te
         if val_loss < best_val_loss:
             best_val_loss = val_loss
             best_model_state = model.state_dict()
+            try:
+                torch.save({
+                    'model_variant': model_variant,
+                    'model_state_dict': best_model_state
+                }, save_path)
+            except Exception as e:
+                print(f"Error saving the model: {e}")
             trigger_times = 0
         else:
             trigger_times += 1
@@ -80,6 +90,8 @@ def train_model(model, train_loader, val_loader, model_variant, class_weights_te
 
     model.load_state_dict(best_model_state)
     return model
+
+
 
 #evaluation function
 def evaluate_model(model, dataloader):
@@ -183,9 +195,29 @@ def k_fold_cross_validation(model_class, dataset, k=10, num_epochs=50):
 
     return avg_metrics, all_fold_metrics
 
+def print_fold_metrics(all_fold_metrics):
+    for fold, metrics in enumerate(all_fold_metrics):
+        print(f"\nMetrics for Fold {fold + 1}:")
+        print(f"Accuracy: {metrics['accuracy']:.4f}")
+        print(f"Macro Precision: {metrics['macro_precision']:.4f}")
+        print(f"Macro Recall: {metrics['macro_recall']:.4f}")
+        print(f"Macro F1: {metrics['macro_f1']:.4f}")
+        print(f"Micro Precision: {metrics['micro_precision']:.4f}")
+        print(f"Micro Recall: {metrics['micro_recall']:.4f}")
+        print(f"Micro F1: {metrics['micro_f1']:.4f}")
+
+        class_report = metrics['class_report']
+        table = []
+        for i, (prec, rec, f1, support) in enumerate(zip(class_report["precision"], class_report["recall"], class_report["f1"], class_report["support"])):
+            table.append([class_names[i], prec, rec, f1, support])
+        headers = ["Class", "Precision", "Recall", "F1", "Support"]
+        print(tabulate(table, headers=headers, tablefmt="grid"))
+
+
+
 if __name__ == "__main__":
     results = []
-    # Loop to train and test the 3 variants with k-fold cross-validation
+    #loop to train and test the 3 variants with k-fold cross-validation
     for variant_name, model_class in [("FacialStateCNN", FacialStateCNN),
                                       ("Variant1CNN", Variant1CNN),
                                       ("Variant2CNN", Variant2CNN)]:
@@ -194,7 +226,11 @@ if __name__ == "__main__":
         results.append((variant_name, avg_metrics, all_fold_metrics))
         print(f"Avg metrics for {variant_name}: {avg_metrics}")
 
-    # Print and compare results
+        #print fold metrics
+        print_fold_metrics(all_fold_metrics)
+
+    #print and compare overall average results
+    print("\nOverall Average Metrics for Each Model Variant")
     print("Model\tMacro Precision\tMacro Recall\tMacro F1\tMicro Precision\tMicro Recall\tMicro F1\tAccuracy")
     for result in results:
         name, avg_metrics, _ = result
