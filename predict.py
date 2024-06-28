@@ -156,17 +156,17 @@ if __name__ == "__main__":
             results.append((class_name, demo_name, accuracy, precision, recall, f1, support))
             print_confusion_matrix(labels, predictions, class_name, demo_name)
         
-        headers = ["Class", "Demographic", "Accuracy", "Precision", "Recall", "F1-Score", "Support"]
+        headers = ["Class", "Demographic", "Accuracy", "Precision", "Recall", "F1-Score", ""]
         print(tabulate(results, headers=headers, tablefmt="grid"))
 
         avg_female_metrics, avg_male_metrics = average_metrics_by_gender(results)
         
         print("\nAverage Metrics for Females:")
         print(tabulate([[avg_female_metrics['accuracy'], avg_female_metrics['precision'], avg_female_metrics['recall'], avg_female_metrics['f1'], avg_female_metrics['support']]], 
-                       headers=["Accuracy", "Precision", "Recall", "F1-Score", "Support"], tablefmt="grid"))
+                       headers=["Accuracy", "Precision", "Recall", "F1-Score", ""], tablefmt="grid"))
         
         print("\nAverage Metrics for Males:")
         print(tabulate([[avg_male_metrics['accuracy'], avg_male_metrics['precision'], avg_male_metrics['recall'], avg_male_metrics['f1'], avg_male_metrics['support']]], 
-                       headers=["Accuracy", "Precision", "Recall", "F1-Score", "Support"], tablefmt="grid"))
+                       headers=["Accuracy", "Precision", "Recall", "F1-Score", ""], tablefmt="grid"))
       
         analyze_class_distribution(dataset)
