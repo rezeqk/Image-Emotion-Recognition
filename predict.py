@@ -1,6 +1,5 @@
 import numpy as np
 import torch
-import torch.nn as nn
 from torchvision import datasets, transforms
 from torch.utils.data import DataLoader, Subset
 from sklearn.metrics import confusion_matrix, precision_recall_fscore_support, accuracy_score
@@ -8,9 +7,7 @@ from tabulate import tabulate
 from PIL import Image
 from collections import Counter
 from cnn_models import Variant1CNN, Variant2CNN, FacialStateCNN
-import sys
 
-# Define the correct order of class names
 class_names = ["happy", "neutral", "angry", "focus"]
 
 def load_model(model_path):

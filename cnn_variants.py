@@ -41,7 +41,7 @@ def train_model(model, train_loader, val_loader, model_variant, class_weights_te
     optimizer = optim.Adam(model.parameters(), lr=0.0003)
     scheduler = optim.lr_scheduler.ReduceLROnPlateau(optimizer, 'min', patience=3, verbose=True)
     best_val_loss = float('inf')
-    patience = 5  # Wait 5 epochs if there's no improvement in loss function early stopping
+    patience = 5
     trigger_times = 0
 
     for epoch in range(num_epochs):
@@ -71,6 +71,11 @@ def train_model(model, train_loader, val_loader, model_variant, class_weights_te
         if val_loss < best_val_loss:
             best_val_loss = val_loss
             best_model_state = model.state_dict()
+            # Save the best model state to a file
+            torch.save({
+                'model_variant': model_variant,
+                'model_state_dict': best_model_state
+            }, 'best_model.pth')
             trigger_times = 0
         else:
             trigger_times += 1
