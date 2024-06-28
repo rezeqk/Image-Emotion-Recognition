@@ -24,7 +24,7 @@ transform = transforms.Compose([
 ])
 
 #load dataset from directories
-dataset = datasets.ImageFolder('dataset', transform=transform)
+dataset = datasets.ImageFolder('newdataset_3', transform=transform)
 
 #random seed for reproducibility of data
 random_seed = 42

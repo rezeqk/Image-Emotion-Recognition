@@ -1,16 +1,14 @@
 import numpy as np
 import torch
 import torch.nn as nn
-import torch.optim as optim
 from torchvision import datasets, transforms
 from torch.utils.data import DataLoader, Subset
 from sklearn.metrics import confusion_matrix, precision_recall_fscore_support, accuracy_score
 from tabulate import tabulate
-import sys
 from PIL import Image
 from collections import Counter
 from cnn_models import Variant1CNN, Variant2CNN, FacialStateCNN
-import csv
+import sys
 
 # Define the correct order of class names
 class_names = ["happy", "neutral", "angry", "focus"]
@@ -173,10 +171,4 @@ if __name__ == "__main__":
         print(tabulate([[avg_male_metrics['accuracy'], avg_male_metrics['precision'], avg_male_metrics['recall'], avg_male_metrics['f1'], avg_male_metrics['support']]], 
                        headers=["Accuracy", "Precision", "Recall", "F1-Score", "Support"], tablefmt="grid"))
       
-        # with open('bias_analysis_results.csv', 'w', newline='') as csvfile:
-        #     writer = csv.writer(csvfile)
-        #     writer.writerow(headers)
-        #     writer.writerows(results)
-
- 
         analyze_class_distribution(dataset)
